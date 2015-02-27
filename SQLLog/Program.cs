@@ -20,7 +20,9 @@ namespace SQLLog
             string home = Directory.GetCurrentDirectory();
 
             var MyIni = new IniFile();
-            string slastrun = MyIni.Read("LastRun");
+
+            // var MyIni = new IniFile();
+            string slastrun;
 
             //if (slastrun == "") slastrun = "0";
 
@@ -38,6 +40,7 @@ namespace SQLLog
             bool proxy = false;
             bool cleanlogs = false;
             bool incremental = false;
+            bool usedbtime = false;
 
             string TLogsURL = "";
             string TTokenURL = "";
@@ -50,12 +53,25 @@ namespace SQLLog
             string Tdbserver = "";
             string Tdbschema = "dbo";
             string Tpagesize = "1000";
+            string Tmsglvl = "FINE";
 
             string Tfilter = "";
 
             string Tsrid = "null";
 
             int c = args.GetUpperBound(0);
+
+            // Create list of valid message levels
+
+            string[] MsgLvls = new string[5];
+            MsgLvls[0] = "SEVERE";
+            MsgLvls[1] = "WARNING";
+            MsgLvls[2] = "INFO";
+            MsgLvls[3] = "FINE";
+            MsgLvls[4] = "VERBOSE";
+            MsgLvls[5] = "DEBUG";
+
+
 
             // Loop through arguments
             for (int n = 0; n < c; n++)
@@ -118,10 +134,28 @@ namespace SQLLog
                     case "-pagesize":
                         Tpagesize = thisVal;
                         break;
+                    case "-usedbtime":
+                        string dbt = thisVal;
+                        if (dbt.ToUpper() == "Y") usedbtime = true;
+                        break;
+                    case "-messagelevel":
+                        if (MsgLvls.Contains<string>(thisVal.ToUpper()) == true) Tmsglvl = thisVal.ToUpper();
+                        break;
+
                     default:
                         break;
                 }
             }
+
+            if (usedbtime == true)
+            {
+                slastrun = GetLastDatabaseTime(Tdbuser,Tdbserver,Tdbname,Tdbpassword,debug);
+            }
+            else
+            {
+                slastrun = MyIni.Read("LastRun");
+            };
+
 
             if (debug == true) Console.WriteLine("Last run " + slastrun);
             if (debug == true) Console.WriteLine("This run " + sthisrun);
@@ -222,8 +256,8 @@ namespace SQLLog
                         imgurl = imgurl + "&sinceLastStart=true";
                     }
                 }
-
-                imgurl = imgurl + "&level=FINE";
+                // Include every possible message.  User can restrict logging level from ArcGIS for Server Manager.  
+                imgurl = imgurl + "&level=" + Tmsglvl; 
                 imgurl = imgurl + "&filterType=json";
                 imgurl = imgurl + "&filter=" + Tfilter; //"{\"server\": \"*\", \"services\": \"*\", \"machines\":\"*\" }";
 
@@ -540,7 +574,8 @@ namespace SQLLog
 
         public static double DateTimeToUnixTimestamp(DateTime dateTime)
         {
-            return (dateTime - new DateTime(1970, 1, 1).ToLocalTime()).TotalSeconds;
+            return (dateTime - new DateTime(1970, 1, 1,0,0,0,0).ToLocalTime()).TotalSeconds;
+            
         }
 
         static readonly DateTime UnixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
@@ -551,6 +586,13 @@ namespace SQLLog
             return unixTimeStamp > MaxUnixSeconds
                ? UnixEpoch.AddMilliseconds(unixTimeStamp)
                : UnixEpoch.AddSeconds(unixTimeStamp);
+        }
+
+        public static double DateTime2ToUnixTimeStamp(DateTime dt2)
+        {
+
+            return (dt2.ToUniversalTime() - UnixEpoch).TotalMilliseconds;
+               
         }
 
         public static string GetToken(string tokenurl, string username, string password)
@@ -576,6 +618,44 @@ namespace SQLLog
             }
 
             return myToken;
+        }
+
+        public static string GetLastDatabaseTime (string dbuser, string dbserver, string dbname, string dbpassword, bool debug)
+        {
+
+            SqlConnection myConnection;
+
+            if (dbuser != "")
+            {
+                myConnection = new SqlConnection("Server=" + dbserver + "; Database=" + dbname + "; User ID=" + dbuser + "; Password=" + dbpassword);
+            }
+            else
+            {
+                myConnection = new SqlConnection("Server=" + dbserver + "; Database=" + dbname + ";Integrated Security=true");
+            }
+
+            try
+            {
+                myConnection.Open();
+            }
+            catch (Exception e)
+            {
+               
+                Console.WriteLine("Could not open up SQL Connection");
+                if (debug == true) Console.WriteLine(e.ToString());
+                return null;
+            }
+
+            string sql = "SELECT MAX([time]) as MaxTime FROM RawLogs";
+            SqlCommand cmd = new SqlCommand(sql,myConnection);
+           
+            DateTime dt = (DateTime) cmd.ExecuteScalar();
+            myConnection.Close();
+
+            double totalms = DateTime2ToUnixTimeStamp(dt);
+
+            return Math.Truncate(totalms).ToString().Substring(0, Math.Truncate(totalms).ToString().Length);
+          
         }
     }
 }
