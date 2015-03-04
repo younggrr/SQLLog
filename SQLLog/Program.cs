@@ -63,7 +63,7 @@ namespace SQLLog
 
             // Create list of valid message levels
 
-            string[] MsgLvls = new string[5];
+            string[] MsgLvls = new string[6];
             MsgLvls[0] = "SEVERE";
             MsgLvls[1] = "WARNING";
             MsgLvls[2] = "INFO";
